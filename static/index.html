@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NaturaX - Order Follow-up</title>
+<style>
+:root{--bg:#f6f7f5;--card:#fff;--ink:#1f2a24;--mut:#6b7770;--line:#e2e6e1;--green:#3f9a5e;--red:#d64545;--amber:#e0a030;--blue:#3b78c4}
+@media (prefers-color-scheme:dark){:root{--bg:#161a17;--card:#1f2521;--ink:#e8ede9;--mut:#93a097;--line:#2f3832}}
+*{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:12px 20px;background:var(--card);border-bottom:1px solid var(--line)}
+header h1{font-size:18px;margin:0;flex:1}header h1 span{color:var(--green)}
+nav{display:flex;gap:4px;padding:8px 20px;flex-wrap:wrap}
+nav button{border:0;background:none;padding:8px 14px;border-radius:8px;cursor:pointer;color:var(--mut);font-weight:600}
+nav button.on{background:var(--green);color:#fff}
+main{padding:0 20px 40px;max-width:1400px;margin:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.kpi b{display:block;font-size:26px}.kpi small{color:var(--mut)}.kpi.red b{color:var(--red)}.kpi.amber b{color:var(--amber)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:end;margin-bottom:12px}
+.filters label{font-size:12px;color:var(--mut);display:flex;flex-direction:column;gap:2px}
+input,select,button.btn{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+button.btn{cursor:pointer;background:var(--green);color:#fff;border-color:var(--green)}
+button.btn.sec{background:var(--card);color:var(--ink);border-color:var(--line)}button.btn.danger{background:var(--red);border-color:var(--red)}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mut);font-weight:600;font-size:12px;position:sticky;top:0;background:var(--card)}
+.wrap{overflow:auto;max-height:560px}
+.tag{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600}
+.High{background:#fbe0e0;color:#a52a2a}.Medium{background:#fcefd2;color:#8a5a00}.Low{background:#dcecf8;color:#25577f}
+.od{color:var(--red);font-weight:700}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+.bar{display:flex;align-items:center;gap:8px;margin:6px 0}.bar span.l{width:150px;font-size:13px}
+.bar .t{flex:1;background:var(--line);border-radius:5px;height:16px;overflow:hidden}.bar .f{height:100%;background:var(--green)}
+.hide{display:none}.mut{color:var(--mut)}
+#toast{position:fixed;bottom:18px;right:18px;background:#222;color:#fff;padding:10px 14px;border-radius:8px;max-width:420px;display:none;z-index:9}
+#toast.err{background:var(--red)}
+dialog{border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);min-width:320px}
+dialog label{display:block;margin:8px 0}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Natura<span>X</span> &middot; Order Follow-up Automation</h1>
+  <label class="mut">Acting as&nbsp;<input id="user" value="manager" size="12" maxlength="50"></label>
+</header>
+<nav id="tabs"></nav>
+<main>
+
+<!-- shared filters -->
+<div id="filterbar" class="card filters">
+  <label>Order date from<input type="date" id="f_from"></label>
+  <label>to<input type="date" id="f_to"></label>
+  <label>Exception type<select id="f_cat"><option value="">All</option></select></label>
+  <label>Employee<select id="f_emp"><option value="">All</option></select></label>
+  <label>Priority<select id="f_pri"><option value="">All</option></select></label>
+  <label id="f_status_l">Status<select id="f_status"><option value="Unresolved">Unresolved</option><option value="">All</option><option>Open</option><option>In Progress</option><option>Resolved</option></select></label>
+  <label id="f_over_l">&nbsp;<span><input type="checkbox" id="f_over"> Overdue only</span></label>
+  <button class="btn" onclick="refresh()">Apply</button>
+  <button class="btn sec" onclick="clearFilters()">Clear</button>
+</div>
+
+<section id="p_dashboard">
+  <div class="kpis" id="kpis"></div>
+  <div class="grid2">
+    <div class="card"><h3>Exceptions by category</h3><div id="bycat"></div></div>
+    <div class="card"><h3>Employee-wise pending tasks</h3><div class="wrap"><table id="byemp"></table></div></div>
+  </div>
+  <div class="card"><h3>High-priority cases requiring immediate action</h3><div class="wrap"><table id="hp"></table></div></div>
+</section>
+
+<section id="p_tasks" class="hide">
+  <div class="card"><div class="wrap"><table id="tasks"></table></div><p class="mut" id="taskcount"></p></div>
+</section>
+
+<section id="p_upload" class="hide">
+  <div class="card">
+    <h3>Upload orders (.csv / .xlsx)</h3>
+    <p class="mut">Required columns: Order ID, Order Date, Customer Name, Phone Number, Order Value, Payment Type, Order Status, Dispatch Date, Expected Delivery Date, Assigned Employee.</p>
+    <input type="file" id="file" accept=".csv,.xlsx,.xlsm">
+    <button class="btn" onclick="upload()">Upload &amp; run rules</button>
+    <button class="btn sec" onclick="loadSample()">Load built-in sample data</button>
+    <a href="/api/sample/download?kind=errors"><button class="btn sec" type="button">Download a file with errors (for testing)</button></a>
+    <button class="btn danger" onclick="resetAll()" style="float:right">Reset all data</button>
+    <div id="upres" style="margin-top:12px"></div>
+  </div>
+  <div class="card"><h3>Upload history</h3><div class="wrap"><table id="uphist"></table></div></div>
+</section>
+
+<section id="p_issues" class="hide">
+  <div class="card"><h3>Rows needing data correction (latest upload)</h3>
+  <p class="mut">These rows were NOT evaluated by the rules and no task was created for them - fix the data and re-upload.</p>
+  <div class="wrap"><table id="issues"></table></div></div>
+</section>
+
+<section id="p_report" class="hide">
+  <div class="card filters">
+    <label>Report date<input type="date" id="r_date"></label>
+    <button class="btn" onclick="loadReport()">Preview</button>
+    <button class="btn sec" onclick="dlReport()">Download CSV</button>
+  </div>
+  <div id="report"></div>
+</section>
+
+<section id="p_audit" class="hide">
+  <div class="card filters"><label>Order ID<input id="a_order" placeholder="e.g. ORD-1010"></label><button class="btn" onclick="loadAudit()">Search</button></div>
+  <div class="card"><div class="wrap"><table id="audit"></table></div></div>
+</section>
+
+<section id="p_rules" class="hide">
+  <div class="card"><h3>Business rules &amp; SLAs</h3>
+  <p class="mut">Changing a value saves it and immediately re-runs the rule engine (new tasks are created / obsolete ones auto-resolved; existing tasks are never duplicated).</p>
+  <div class="settings" id="settings"></div><br>
+  <button class="btn" onclick="saveSettings()">Save &amp; re-run rules</button></div>
+</section>
+</main>
+
+<dialog id="dlg">
+  <h3 id="dlgT">Reassign</h3>
+  <label>New employee<select id="dlgEmp"></select></label>
+  <label>New deadline (optional)<input type="datetime-local" id="dlgDl"></label>
+  <p class="mut" style="max-width:300px">Reassigning resets the task status to Open for the new owner and is recorded in the audit trail.</p>
+  <button class="btn" onclick="doReassign()">Reassign</button>
+  <button class="btn sec" onclick="dlg.close()">Cancel</button>
+</dialog>
+<div id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let meta={}, tab='dashboard', reassignId=null;
+const TABS=[['dashboard','Dashboard'],['tasks','Tasks'],['upload','Upload'],['issues','Data issues'],['report','Daily report'],['audit','Audit trail'],['rules','Rules & settings']];
+const user=()=>($('user').value||'').trim();
+
+function toast(m,err){const t=$('toast');t.textContent=m;t.className=err?'err':'';t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',err?7000:3500)}
+async function api(url,opt){
+  let r;try{r=await fetch(url,opt)}catch(e){toast('Cannot reach server',1);throw e}
+  if(!r.ok){let d=await r.text();try{d=JSON.parse(d).detail||d}catch{};if(typeof d!=='string')d=JSON.stringify(d);toast(d,1);throw new Error(d)}
+  return r.headers.get('content-type')?.includes('json')?r.json():r.text();
+}
+function qs(extra={}){
+  const p=new URLSearchParams();
+  const m={date_from:'f_from',date_to:'f_to',category:'f_cat',employee:'f_emp',priority:'f_pri'};
+  for(const k in m){const v=$(m[k]).value;if(v)p.set(k,v)}
+  for(const k in extra)if(extra[k])p.set(k,extra[k]);
+  return p.toString();
+}
+function fill(sel,list,all){sel.innerHTML=(all?'<option value="">All</option>':'')+list.map(x=>`<option>${esc(x)}</option>`).join('')}
+async function loadMeta(){
+  meta=await api('/api/meta');
+  const keep=[$('f_cat').value,$('f_emp').value,$('f_pri').value];
+  fill($('f_cat'),meta.categories,1);fill($('f_emp'),meta.employees,1);fill($('f_pri'),meta.priorities,1);
+  $('f_cat').value=keep[0];$('f_emp').value=keep[1];$('f_pri').value=keep[2];
+}
+function clearFilters(){['f_from','f_to','f_cat','f_emp','f_pri'].forEach(i=>$(i).value='');$('f_over').checked=false;$('f_status').value='Unresolved';refresh()}
+
+function showTab(t){
+  tab=t;
+  TABS.forEach(([k])=>$('p_'+k).classList.toggle('hide',k!==t));
+  [...$('tabs').children].forEach((b,i)=>b.classList.toggle('on',TABS[i][0]===t));
+  $('filterbar').classList.toggle('hide',!['dashboard','tasks'].includes(t));
+  ['f_status_l','f_over_l'].forEach(i=>$(i).classList.toggle('hide',t!=='tasks'));
+  refresh();
+}
+async function refresh(){
+  await loadMeta();
+  ({dashboard,tasks:loadTasks,upload:loadUploads,issues:loadIssues,report:loadReport,audit:loadAudit,rules:loadSettings})[tab]();
+}
+
+const pri=p=>`<span class="tag ${p}">${p}</span>`;
+const dl=t=>`<span class="${t.is_overdue?'od':''}">${esc(t.deadline.slice(0,16))}${t.is_overdue?' &#9888; OVERDUE':''}</span>`;
+
+async function dashboard(){
+  const d=await api('/api/dashboard?'+qs()),k=d.kpis;
+  const cards=[['Orders in system',k.orders_in_system],['Total rows uploaded',k.rows_uploaded_total],['Rows needing data correction',k.rows_needing_data_correction,'amber'],
+    ['Orders requiring attention',k.orders_requiring_attention,'amber'],['Open tasks',k.open_tasks],['In progress',k.in_progress_tasks],['Overdue tasks',k.overdue_tasks,'red'],['Resolved',k.resolved_tasks]];
+  $('kpis').innerHTML=cards.map(([l,v,c])=>`<div class="kpi ${c||''}"><b>${v}</b><small>${l}</small></div>`).join('');
+  const mx=Math.max(1,...Object.values(d.by_category).map(x=>x.total));
+  $('bycat').innerHTML=Object.entries(d.by_category).map(([n,v])=>`<div class="bar"><span class="l">${n}</span><div class="t"><div class="f" style="width:${v.total/mx*100}%"></div></div><span>${v.unresolved} open / ${v.total}</span></div>`).join('');
+  $('byemp').innerHTML='<tr><th>Employee</th><th>Pending</th><th>Open</th><th>In progress</th><th>Overdue</th><th>High</th></tr>'+
+    (d.by_employee.map(e=>`<tr><td>${esc(e.employee)}</td><td><b>${e.pending}</b></td><td>${e.open}</td><td>${e.in_progress}</td><td class="${e.overdue?'od':''}">${e.overdue}</td><td>${e.high}</td></tr>`).join('')||'<tr><td colspan=6 class="mut">No pending tasks</td></tr>');
+  $('hp').innerHTML='<tr><th>Order</th><th>Customer</th><th>Exception</th><th>Reason</th><th>Employee</th><th>Action</th><th>Deadline</th></tr>'+
+    (d.high_priority.map(t=>`<tr><td>${esc(t.order_id)}</td><td>${esc(t.customer_name)}<br><small class="mut">${esc(t.phone)}</small></td><td>${esc(t.category)}</td><td>${esc(t.reason)}</td><td>${esc(t.assigned_employee)}</td><td>${esc(t.action_required)}</td><td>${dl(t)}</td></tr>`).join('')||'<tr><td colspan=7 class="mut">Nothing high priority. Load data on the Upload tab.</td></tr>');
+}
+
+async function loadTasks(){
+  const ts=await api('/api/tasks?'+qs({status:$('f_status').value,overdue:$('f_over').checked?'true':''}));
+  $('tasks').innerHTML='<tr><th>Order / Customer</th><th>Exception</th><th>Priority</th><th>Assigned</th><th>Action required</th><th>Deadline</th><th>Status</th><th></th></tr>'+
+  ts.map(t=>`<tr><td><b>${esc(t.order_id)}</b><br>${esc(t.customer_name)}<br><small class="mut">${esc(t.phone)} &middot; &#8377;${Number(t.order_value).toLocaleString('en-IN')} &middot; ${esc(t.payment_type)}</small></td>
+   <td><b>${esc(t.category)}</b><br><small class="mut">${esc(t.reason)}</small></td><td>${pri(t.priority)}</td><td>${esc(t.assigned_employee)}</td>
+   <td>${esc(t.action_required)}</td><td>${dl(t)}</td>
+   <td><select onchange="setStatus(${t.id},this.value)">${['Open','In Progress','Resolved'].map(s=>`<option ${s===t.status?'selected':''}>${s}</option>`).join('')}</select></td>
+   <td><button class="btn sec" onclick="openReassign(${t.id},'${esc(t.assigned_employee)}')" ${t.status==='Resolved'?'disabled':''}>Reassign</button></td></tr>`).join('')||'<tr><td colspan=8 class="mut">No tasks match the filters.</td></tr>';
+  $('taskcount').textContent=ts.length+' task(s)';
+}
+async function setStatus(id,status){
+  try{await api('/api/tasks/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:user(),status})});toast('Status updated')}catch{}
+  loadTasks();
+}
+function openReassign(id,cur){
+  reassignId=id;fill($('dlgEmp'),meta.employees.filter(e=>e!==cur));$('dlgDl').value='';$('dlgT').textContent='Reassign task #'+id+' (from '+cur+')';$('dlg').showModal();
+}
+async function doReassign(){
+  const body={user:user(),assigned_employee:$('dlgEmp').value};if($('dlgDl').value)body.new_deadline=$('dlgDl').value;
+  try{await api('/api/tasks/'+reassignId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});toast('Task reassigned');$('dlg').close()}catch{}
+  loadTasks();
+}
+
+async function upload(){
+  const f=$('file').files[0];if(!f){toast('Choose a file first',1);return}
+  const fd=new FormData();fd.append('file',f);fd.append('user',user());
+  try{showUp(await api('/api/upload',{method:'POST',body:fd}))}catch{}
+  loadUploads();
+}
+async function loadSample(){try{showUp(await api('/api/sample/load?user='+encodeURIComponent(user()),{method:'POST'}))}catch{};loadUploads()}
+function showUp(r){
+  $('upres').innerHTML=`<div class="card"><b>${esc(r.filename)}</b><br>Rows: ${r.total_rows} &middot; valid: ${r.valid_rows} &middot; <b>need data correction: ${r.rejected_rows}</b><br>
+  Orders new: ${r.new_orders}, updated: ${r.updated_orders}<br>Tasks <b>created: ${r.tasks_created}</b> &middot; already existing (not duplicated): ${r.tasks_already_existing} &middot; auto-resolved: ${r.tasks_auto_resolved}
+  ${r.issues.length?'<div class="wrap" style="max-height:260px"><table><tr><th>Row</th><th>Order</th><th>Issue</th><th>Detail</th></tr>'+r.issues.map(i=>`<tr><td>${i.row}</td><td>${esc(i.order_id)}</td><td>${esc(i.type)}</td><td>${esc(i.detail)}</td></tr>`).join('')+'</table></div>':''}</div>`;
+  toast('Upload processed');
+}
+async function loadUploads(){
+  const u=await api('/api/uploads');
+  $('uphist').innerHTML='<tr><th>#</th><th>File</th><th>When</th><th>By</th><th>Rows</th><th>Valid</th><th>Rejected</th><th>New tasks</th></tr>'+
+   u.map(x=>`<tr><td>${x.id}</td><td>${esc(x.filename)}</td><td>${esc(x.uploaded_at)}</td><td>${esc(x.uploaded_by)}</td><td>${x.total_rows}</td><td>${x.valid_rows}</td><td>${x.rejected_rows}</td><td>${x.new_tasks}</td></tr>`).join('');
+}
+async function resetAll(){if(!confirm('Delete ALL orders, tasks and audit records?'))return;await api('/api/admin/reset?user='+encodeURIComponent(user()),{method:'POST'});toast('All data cleared');$('upres').innerHTML='';loadUploads()}
+async function loadIssues(){
+  const d=await api('/api/data-issues');
+  $('issues').innerHTML='<tr><th>Row</th><th>Order ID</th><th>Issue</th><th>Detail</th></tr>'+(d.issues.map(i=>`<tr><td>${i.row_num}</td><td>${esc(i.order_id)}</td><td>${esc(i.issue_type)}</td><td>${esc(i.detail)}</td></tr>`).join('')||'<tr><td colspan=4 class="mut">No issues.</td></tr>');
+}
+
+function tbl(items){return '<div class="wrap"><table><tr><th>Order</th><th>Customer</th><th>Category</th><th>Priority</th><th>Employee</th><th>Action</th><th>Deadline</th><th>Status</th></tr>'+
+  (items.map(t=>`<tr><td>${esc(t.order_id)}</td><td>${esc(t.customer_name)}</td><td>${esc(t.category)}</td><td>${pri(t.priority)}</td><td>${esc(t.assigned_employee)}</td><td>${esc(t.action_required)}</td><td>${dl(t)}</td><td>${esc(t.status)}</td></tr>`).join('')||'<tr><td colspan=8 class="mut">None</td></tr>')+'</table></div>'}
+async function loadReport(){
+  if(!$('r_date').value)$('r_date').value=new Date().toLocaleDateString('en-CA');
+  const d=await api('/api/report/daily?date='+$('r_date').value);
+  $('report').innerHTML=Object.entries(d.sections).map(([n,v])=>`<div class="card"><h3>${esc(n)} (${v.length})</h3>${tbl(v)}</div>`).join('')+
+   `<div class="card"><h3>Employee-wise pending actions</h3><table><tr><th>Employee</th><th>Pending</th><th>Overdue</th><th>High</th><th>Actions</th></tr>${d.employee_pending.map(e=>`<tr><td>${esc(e.employee)}</td><td>${e.pending}</td><td>${e.overdue}</td><td>${e.high}</td><td><small>${esc(e.actions.slice(0,6).join(' | '))}${e.actions.length>6?' ...':''}</small></td></tr>`).join('')}</table></div>`;
+}
+function dlReport(){location.href='/api/report/daily?format=csv&date='+($('r_date').value||'')}
+
+async function loadAudit(){
+  const a=await api('/api/audit?order_id='+encodeURIComponent($('a_order').value.trim()));
+  $('audit').innerHTML='<tr><th>Time</th><th>Order ID</th><th>Action</th><th>Details</th><th>User</th></tr>'+a.map(x=>`<tr><td>${esc(x.timestamp)}</td><td>${esc(x.order_id||'-')}</td><td>${esc(x.action)}</td><td>${esc(x.details)}</td><td>${esc(x.user)}</td></tr>`).join('');
+}
+
+const LABELS={unconfirmed_hours:'Rule 1: flag unconfirmed after (hours)',dispatch_hours:'Rule 2: dispatch deadline after order (hours)',high_value_threshold:'Rule 5: high-value threshold (Rs)',
+ sla_unconfirmed_hours:'Task SLA: unconfirmed (h after breach)',sla_dispatch_hours:'Task SLA: dispatch delay (h)',sla_shipment_hours:'Task SLA: shipment delay (h)',sla_failed_hours:'Task SLA: failed delivery (h from detection)',sla_high_value_hours:'Task SLA: high value (h)'};
+async function loadSettings(){
+  const s=await api('/api/settings');
+  $('settings').innerHTML=Object.keys(LABELS).map(k=>`<label>${LABELS[k]}<input type="number" min="0.1" step="any" data-k="${k}" value="${s[k]}"></label>`).join('');
+}
+async function saveSettings(){
+  const values={};document.querySelectorAll('#settings input').forEach(i=>values[i.dataset.k]=i.value);
+  try{const r=await api('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:user(),values})});
+    toast((r.changed.length?'Saved. ':'No change. ')+`Re-run: ${r.rerun.created} new task(s), ${r.rerun.auto_resolved} auto-resolved`)}catch{}
+}
+
+$('tabs').innerHTML=TABS.map(([k,l])=>`<button onclick="showTab('${k}')">${l}</button>`).join('');
+showTab('dashboard');
+</script>
+</body>
+</html>
