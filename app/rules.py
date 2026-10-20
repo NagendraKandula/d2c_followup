@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 from .db import FMT, audit, get_settings, now_str
 
+UNDELIVERED_STATUSES = ("Unconfirmed", "Confirmed", "Dispatched", "Failed Delivery")
 CATEGORIES = ["Unconfirmed Order", "Dispatch Delay", "Shipment Delay", "Failed Delivery", "High-Value Order"]
 
 
@@ -72,12 +73,19 @@ def evaluate_order(o, now, s):
             priority="High", action="Contact customer and arrange another attempt",
             deadline=now + timedelta(hours=s["sla_failed_hours"])))
 
-    # Rule 5 - High value (> threshold), undelivered, past expected date
-    if status in ("Dispatched", "Failed Delivery") and overdue_delivery and o["order_value"] > s["high_value_threshold"]:
+    # Rule 5 - High value (> threshold), UNDELIVERED, past expected date.
+    # "Undelivered" = any live order that has not reached the customer: Unconfirmed, Confirmed,
+    # Dispatched or Failed Delivery. Delivered and Cancelled orders never qualify.
+    # A missing expected date means the rule cannot be judged -> not flagged (see ingest validation).
+    if status in UNDELIVERED_STATUSES and overdue_delivery and o["order_value"] > s["high_value_threshold"]:
+        shipped = status in ("Dispatched", "Failed Delivery")
         out.append(dict(
             rule_code="HIGH_VALUE", category="High-Value Order",
-            reason=f"High-value order (Rs {o['order_value']:,.0f} > Rs {s['high_value_threshold']:,.0f}) undelivered past expected date",
-            priority="High", action="Prioritize customer and courier follow-up",
+            reason=(f"High-value order (Rs {o['order_value']:,.0f} > Rs {s['high_value_threshold']:,.0f}), "
+                    f"status {status}, undelivered past expected date {o['expected_delivery_date'][:10]}"),
+            priority="High",
+            action=("Prioritize customer and courier follow-up" if shipped
+                    else "Escalate to warehouse to dispatch immediately and update customer"),
             deadline=exp + timedelta(hours=s["sla_high_value_hours"])))
     return out
 
