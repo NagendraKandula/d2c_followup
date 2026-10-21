@@ -50,32 +50,6 @@ Three layers: (1) DB constraint `UNIQUE(order_id, rule_code)` on tasks; (2) orde
 re-uploading updates rather than duplicates; (3) the rule engine only inserts tasks whose key does not exist yet
 (it reports "already existing" counts). Re-uploading the same file => 0 new tasks (try it).
 If an order's condition clears (e.g. status becomes Delivered) its open tasks are auto-resolved and audited.
-
-## Live-interview cheat-sheet
-1. **Upload file with errors** -> Upload tab -> "Download a file with errors" -> upload it -> see per-row issues.
-2. **Change a rule** -> Rules & settings -> `dispatch_hours` 24 -> 12 -> Save: new Dispatch Delay tasks appear.
-   (In code: `dispatch_hours` default in `app/db.py`; logic in `evaluate_order()` in `app/rules.py`.)
-3. **Reassign an overdue task** -> Tasks -> tick "Overdue only" -> Reassign. Result: new owner, status reset to Open,
-   deadline unchanged unless a new one is entered (so the overdue state stays visible), audit shows
-   "Task reassigned: A -> B (task was OVERDUE)". Reassigning resolved tasks is blocked.
-4. **Audit** -> Audit trail tab (every create / assignment / status change / reassignment / deadline change /
-   rule change / upload, with order ID, timestamp, user).
-
-## Business impact (for the 5-minute demo)
-1. **Reduces manual work** - nobody scans Excel/WhatsApp; the rule engine checks every order on every upload and
-   hands each employee a ready list (reason, action, deadline).
-2. **Prevents forgotten orders** - every exception becomes a tracked task with deadline, overdue highlighting, daily
-   report, and an unresolved task can't vanish (it stays until Resolved; audit trail shows who touched it).
-3. **Effectiveness metrics** - % orders delivered on time; avg time-to-confirm / time-to-dispatch; exceptions per 100
-   orders; avg task resolution time; % tasks resolved before deadline; overdue count trend; failed-delivery-to-redelivery
-   rate; RTO/cancellation rate on COD; data-error rate per upload.
-4. **Time saved estimate** - (orders/day x minutes of manual checking per order  +  status-chasing messages/day x
-   minutes each) - (minutes spent reviewing the dashboard). Example: 300 orders x 0.5 min scan + 40 WhatsApp follow-ups
-   x 3 min = 270 min/day manual vs ~45 min with the tool => ~3.75 h/day saved. Validate with a 1-week time study.
-5. **Limitations** - no login/roles (user name is typed in); no live courier/WhatsApp/ERP integration; rule 2 uses order
-   date (no confirmation timestamp); tasks are created per upload / on "re-run", not on a schedule; a resolved task is
-   not re-created if the same problem recurs for the same order; SQLite = single-node; no notifications/escalations.
-
 ## Quick API reference
 `POST /api/upload` · `POST /api/sample/load` · `GET /api/tasks` · `PATCH /api/tasks/{id}` ·
 `GET /api/dashboard` · `GET /api/report/daily?format=csv` · `GET /api/audit` · `GET/PUT /api/settings` · `POST /api/rules/run`
